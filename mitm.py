@@ -1,28 +1,34 @@
 import socket
+import struct
+import binascii
 import sys
 
+## Links interessantes para ICMPv6:
+# https://stackoverflow.com/questions/28525124/using-sock-stream-or-sock-raw-on-sending-multicast-ipv6
+# https://github.com/O-Luhishi/Python-Packet-Sniffer/blob/f855159c8ceed28191e78b42c58122f5c0bf0d10/Packet-Sniffer.py
+
+
 def main():
-    interface = "eth0"
-    prefix_v6 = 0
+    try:
+        s = socket.socket(socket.AF_INET6, socket.SOCK_RAW, socket.IPPROTO_ICMPV6)
+    except OSError as msg:    
+        print('Socket could not be created. Error Code : ' + str(msg[0]) + ' Message ' + msg[1])
+        sys.exit(1)
 
-    s = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_ICMP)
-    # s.setsockopt(socket.SOL_IP, socket.IP_HDRINCL, 1)
-    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    server_address = (prefix_v6, interface)
-    s.bind(('enp4s0',0))
+    s.setsockopt(socket.IPPROTO_IPV6, socket.IP_HDRINCL, 1)
 
-    (packet,addr) = s.recvfrom(65536)
+    while True:
+        packet, addr = s.recvfrom(65536)
+        ipv6_src = addr[0]
+        print(f"IP: {ipv6_src}")
 
-    eth_length = 14
-    eth_header = packet[:14]
+        type, code, checksum = struct.unpack('>BBH', packet[0:4])
 
-    eth = struct.unpack("!6s6sH",eth_header)
-
-    print("MAC Dst: "+bytes_to_mac(eth[0]))
-    print("MAC Src: "+bytes_to_mac(eth[1]))
-    print("Type: "+hex(eth[2]))
-
-
-
+        #Router Solicitation, tipo 133
+        #Router Advertisement, tipo 134
+        
+        if type == 133:
+            print("TO DO")
+            # Gerar mensagem Router Advertisement
 
 main()
