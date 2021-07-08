@@ -9,8 +9,8 @@ ETH_LENGTH = 14
 def bytes_to_mac(bytesmac):
     return ":".join("{:02x}".format(x) for x in bytesmac)
 
-# def send_icmpv6_advertisement():
-    #TO-DO
+def send_icmpv6_advertisement():
+    pass
 
 def receive_ipv6(packet): 
     first_word, payload_legth, next_header, hoplimit = struct.unpack('>IHBB', packet[0:8])
@@ -18,29 +18,9 @@ def receive_ipv6(packet):
 
     if next_header == socket.IPPROTO_ICMPV6:
         icmp_type, icmp_code, icmp_chekcsum = struct.unpack('>BBH', payload[:4])
-        print("icmpv6 type: ",icmp_type)
 
         if icmp_type == 133:
             print("Router Solicitation")
-
-
-    # ip_header = packet[:40]
-    # iph = struct.unpack("!BBHHHBBH4s4s", ip_header)
-
-    # version_traf = iph[0]
-    # version = version_traf >> 4
-
-    # print(version)
-
-    # ihl = version_ihl & 0xF 
-    # iph_length = ihl*4
-    # ttl = iph[5]
-    # protocol = iph[6]
-    # s_addr = socket.inet_ntoa(iph[8])
-    # d_addr = socket.inet_ntoa(iph[9])
-    
-    # if protocol == ICMP_PROTOCOL and s_addr != IP_HOST and d_addr == IP_HOST:
-    #     receiveIcmp(packet, iph_length,s_addr)
 
 
 if __name__ == '__main__':
@@ -57,7 +37,6 @@ if __name__ == '__main__':
     while True:
         packet, addr = s.recvfrom(65536)
 
-        eth_length = 14
         eth_header = packet[:ETH_LENGTH]
         eth = struct.unpack("!6s6sH",eth_header)
 
