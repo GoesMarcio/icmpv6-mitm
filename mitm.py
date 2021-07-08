@@ -20,6 +20,17 @@ def getmac():
 
   return mac[0:17]
 
+def calc_checksum(msg):
+    s = 0
+    # add padding if not multiple of 2 (16 bits)
+    msg = (msg + b'\x00') if len(msg)%2 else msg
+    for i in range(0, len(msg), 2):
+        w = msg[i] + (msg[i+1] << 8)
+        s = s + w
+        s = (s & 0xffff) + (s >> 16)
+    s = ~s & 0xffff
+    return socket.ntohs(s)
+
 def bytes_to_mac(bytesmac):
     return ":".join("{:02x}".format(x) for x in bytesmac)
 
@@ -50,44 +61,51 @@ def is_compromised(sender_ip,next_header):
         return True
     return False
 
-def create_ipv6_header(sender_ip, payload_legth):
+def create_ipv6(sender_ip):
     version = 6
     traffic_class = 0
     flow_label = 0
+    payload_legth = 16
     next_header = socket.IPPROTO_ICMPV6
     hop_limit = 255
-    src_address = ...
-    dst_address = sender_ip
-    #return struct.pack('>BBH...', version, traffic_class, flow_label, next_header, payload_legth, hop_limit, src_address, dst_address)
-    return
+    
+    print("SRC IP:",get_my_ipv6())
+    print("SRC DEST IP:",sender_ip)
+    
+    src_address = bytes.fromhex(str(get_my_ipv6()).replace(":",""))
+    dst_address = bytes.fromhex(str(sender_ip).replace(":",""))
+
+    ver_traff =  version << 4
+    traff_lab = 0
+
+    ip_pack = struct.pack('!BBHHBB32s32s', ver_traff, traff_lab, flow_label, payload_legth,next_header, hop_limit, src_address, dst_address)
+    for b in ip_pack:
+        print(hex(b),end=' ')
+    print()
+    return ip_pack
 
 def create_icmpv6():
     adv_type = 134
     code = 0
     cur_hop_limit = 0
-    autoconfig_flags = 0
-    router_lifetime = 120
-    reachable_time = 100
-    retrans_timer = 100
-    checksum = 
-    #return struct.pack("!BBHHH13s", RTR_ADV, code, checksum, identifier, seqnumber, payload)
-    return
+    router_lifetime = 0x0708
+    reachable_time = bytes.fromhex('01010000')
+    retrans_timer = bytes.fromhex('00aa0005')
+    checksum_in = 0
+    flags = 0x80
+    icmpv6_pack = struct.pack("!BBHBBH4s4s",adv_type,code,checksum_in,cur_hop_limit,flags,router_lifetime,reachable_time,retrans_timer)
+    checksum_fim = calc_checksum(icmpv6_pack)
+    # print("Checksum: ",checksum_fim)
+    icmpv6_pack = struct.pack("!BBHBBH4s4s",adv_type,code,checksum_fim,cur_hop_limit,flags,router_lifetime,reachable_time,retrans_timer)
+    print("ICMPV6:",icmpv6_pack)
+    return icmpv6_pack
 
-def create_icmpv6_header():
-    adv_type = 134
-    code = 0
-    checksum = 0
-    identifier = 0
-    seqnumber = 0
-    payload = 0
-    #return struct.pack("!BBHHH13s", RTR_ADV, code, checksum, identifier, seqnumber, payload)
-    return
 
-def send_icmpv6_advertisement(s, packet, mac_src, sender_ip, payload_lenght):
+def send_icmpv6_advertisement(s, packet, mac_src, sender_ip):
     
+    icmpv6_header = create_icmpv6()
+    ipv6_header = create_ipv6(sender_ip)
     eth_header = create_eth_header(mac_src)
-    ipv6_header = create_ipv6_header(sender_ip, payload_lenght)
-    # icmpv6_header = create_icmpv6_header()
     
     # pct = eth_header + ipv6_header + icmpv6_header
     # s.send(pct)
@@ -95,7 +113,6 @@ def send_icmpv6_advertisement(s, packet, mac_src, sender_ip, payload_lenght):
 
 def receive_ipv6(s, packet, mac_src): 
     first_word, payload_lenght, next_header, hoplimit = struct.unpack('>IHBB', packet[0:8])
-    # sender_ip = struct.unpack('!32s', packet[8:24])
     sender_ip = bytes_to_ipv6(packet[8:24])
     payload = packet[40:]
 
@@ -111,7 +128,7 @@ def receive_ipv6(s, packet, mac_src):
             print("Sender IP: ", sender_ip)
             print("\n")
             if sender_ip != get_my_ipv6():
-                send_icmpv6_advertisement(s, packet, mac_src, sender_ip, payload_lenght)
+                send_icmpv6_advertisement(s, packet, mac_src, sender_ip)
 
             
 if __name__ == '__main__':
