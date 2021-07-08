@@ -1,5 +1,6 @@
 import socket, sys
 import struct
+import netifaces
 
 ETH_P_ALL = 0x0003
 IPV6 = 0x86dd
@@ -20,6 +21,16 @@ def getmac():
 
 def bytes_to_mac(bytesmac):
     return ":".join("{:02x}".format(x) for x in bytesmac)
+
+def bytes_to_ipv6(bytesipv6):
+    return socket.inet_ntop(socket.AF_INET6, bytesipv6)
+
+def ipv6_to_bytes(ipv6):
+    return socket.inet_pton(socket.AF_INET6, ipv6)
+
+def get_my_ipv6():
+    addrs = netifaces.ifaddresses('eth0')
+    return addrs[netifaces.AF_INET6][0]['addr']
 
 def create_eth_header(mac_dst):
     mac2bytes = lambda m: bytes.fromhex(m.replace(':',''))
@@ -71,9 +82,11 @@ def receive_ipv6(s, packet, mac_src):
         if icmp_type == RTR_SOL:
             print("\n-------------------------------------------------------------")
             print("Router Solicitation: ")
-            print("Sender IP: ",sender_ip)
+            # print("Sender IP: ",sender_ip)
+            print("Sender IP: ", bytes_to_ipv6(sender_ip))
             print("-------------------------------------------------------------\n")
-            send_icmpv6_advertisement(s, packet, mac_src, sender_ip, payload_legth)
+            if bytes_to_ipv6(sender_ip) != get_my_ipv6():
+                send_icmpv6_advertisement(s, packet, mac_src, sender_ip, payload_legth)
 
             
 if __name__ == '__main__':
