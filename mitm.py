@@ -10,6 +10,7 @@ INTERFACE = 'eth0'
 ETH_LENGTH = 14
 RTR_SOL = 133       #Router Solicitation code
 RTR_ADV = 134       #Router Advertisement code
+compromised = []
 
 def getmac():
   try:
@@ -30,13 +31,24 @@ def ipv6_to_bytes(ipv6):
 
 def get_my_ipv6():
     addrs = netifaces.ifaddresses('eth0')
-    return addrs[netifaces.AF_INET6][0]['addr']
+    return addrs[netifaces.AF_INET6][1]['addr'].split('%')[0]
 
 def create_eth_header(mac_dst):
     mac2bytes = lambda m: bytes.fromhex(m.replace(':',''))
     mac_src = mac2bytes(getmac())
-    
-    return struct.pack("!6s6sH", mac_src, mac_dst, IPV6)
+
+    print("MAC DST:",bytes_to_mac(mac_dst))
+    print("MAC SRC:",bytes_to_mac(mac_src))
+    print("Type:",hex(IPV6))
+    return struct.pack("!6s6sH", mac_dst,mac_src, IPV6)
+
+def is_compromised(sender_ip,next_header):
+    if sender_ip in compromised:
+        print("IP origem: ", sender_ip)
+        print("IP destino: ")
+        print("Protocolo: ", next_header)
+        return True
+    return False
 
 def create_ipv6_header(sender_ip, payload_legth):
     version = 6
@@ -46,47 +58,60 @@ def create_ipv6_header(sender_ip, payload_legth):
     hop_limit = 255
     src_address = ...
     dst_address = sender_ip
+    #return struct.pack('>BBH...', version, traffic_class, flow_label, next_header, payload_legth, hop_limit, src_address, dst_address)
+    return
 
-#     return struct.pack('>BBH...', version, traffic_class, flow_label, next_header, payload_legth, hop_limit, src_address, dst_address)
+def create_icmpv6():
+    adv_type = 134
+    code = 0
+    cur_hop_limit = 0
+    autoconfig_flags = 0
+    router_lifetime = 120
+    reachable_time = 100
+    retrans_timer = 100
+    checksum = 
+    #return struct.pack("!BBHHH13s", RTR_ADV, code, checksum, identifier, seqnumber, payload)
+    return
 
-# def create_icmpv6_header():
-#     code = 0
-#     checksum = 0
-#     identifier = 0
-#     seqnumber = 0
-#     payload = 0
+def create_icmpv6_header():
+    adv_type = 134
+    code = 0
+    checksum = 0
+    identifier = 0
+    seqnumber = 0
+    payload = 0
+    #return struct.pack("!BBHHH13s", RTR_ADV, code, checksum, identifier, seqnumber, payload)
+    return
 
-#     return struct.pack("!BBHHH13s", RTR_ADV, code, checksum, identifier, seqnumber, payload)
-
-def send_icmpv6_advertisement(s, packet, mac_src, src_ip, payload):
+def send_icmpv6_advertisement(s, packet, mac_src, sender_ip, payload_lenght):
     
     eth_header = create_eth_header(mac_src)
-    ipv6_header = create_ipv6_header(src_ip, payload_legth)
+    ipv6_header = create_ipv6_header(sender_ip, payload_lenght)
     # icmpv6_header = create_icmpv6_header()
     
     # pct = eth_header + ipv6_header + icmpv6_header
     # s.send(pct)
+    # compromised.append(sender_ip)
 
 def receive_ipv6(s, packet, mac_src): 
-    first_word, payload_legth, next_header, hoplimit = struct.unpack('>IHBB', packet[0:8])
-    sender_ip = packet[8:24]
+    first_word, payload_lenght, next_header, hoplimit = struct.unpack('>IHBB', packet[0:8])
+    # sender_ip = struct.unpack('!32s', packet[8:24])
+    sender_ip = bytes_to_ipv6(packet[8:24])
     payload = packet[40:]
 
-    # print("IP origem: ", sender_ip)
-    # print("IP destino: ")
-    # print("Protocolo: ", next_header)
+    if is_compromised(sender_ip,next_header):
+        return
 
     if next_header == socket.IPPROTO_ICMPV6:
         icmp_type, icmp_code, icmp_chekcsum = struct.unpack('>BBH', payload[:4])
 
         if icmp_type == RTR_SOL:
-            print("\n-------------------------------------------------------------")
+            print("\n\n-------------------------------------------------------------")
             print("Router Solicitation: ")
-            # print("Sender IP: ",sender_ip)
-            print("Sender IP: ", bytes_to_ipv6(sender_ip))
-            print("-------------------------------------------------------------\n")
-            if bytes_to_ipv6(sender_ip) != get_my_ipv6():
-                send_icmpv6_advertisement(s, packet, mac_src, sender_ip, payload_legth)
+            print("Sender IP: ", sender_ip)
+            print("\n")
+            if sender_ip != get_my_ipv6():
+                send_icmpv6_advertisement(s, packet, mac_src, sender_ip, payload_lenght)
 
             
 if __name__ == '__main__':
@@ -112,10 +137,10 @@ if __name__ == '__main__':
         eth_header = packet[:ETH_LENGTH]
         eth = struct.unpack("!6s6sH",eth_header)
 
+
         # checks for ipv6 packets
         if eth[2] == IPV6:
             # print("IPV6 packet received, addr:",addr)
-            
             mac_src = eth[1]
             packet_ipv6 = packet[ETH_LENGTH:]
             
