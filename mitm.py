@@ -73,7 +73,7 @@ def create_ipv6(sender_ip):
     version = 6
     traffic_class = 0
     flow_label = 0
-    payload_legth = 56
+    payload_legth = 16
     next_header = socket.IPPROTO_ICMPV6
     hop_limit = 255
     
